@@ -64,7 +64,7 @@ int client_init(/* struct mqtt_client *client */)
     client.user_name->size = sizeof(MQTT_BROKER_USER);
     client.password->utf8 = (uint8_t *)MQTT_BROKER_PASS;
     client.password->size = sizeof(MQTT_BROKER_PASS);
-    client.protocol_version = MQTT_VERSION_3_1_1;
+    // client.protocol_version = MQTT_VERSION_3_1_1;
 
     client.rx_buf = rx_buffer;
     client.rx_buf_size = sizeof(rx_buffer);
