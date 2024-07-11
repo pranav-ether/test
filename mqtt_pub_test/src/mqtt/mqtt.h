@@ -29,7 +29,8 @@
 #define MQTT_BROKER_PORT 0
 #define MQTT_BROKER_USER ""
 #define MQTT_BROKER_PASS "!"
-#define MQTT_SUBSCRIBE_TOPIC "DEV/NORDIC/NRF9160"
+#define MQTT_SUBSCRIBE_TOPIC ""
+#define MQTT_PUBLISH_TOPIC ""
 
 int mqtt_init();
 // int mqtt_keep_connection();

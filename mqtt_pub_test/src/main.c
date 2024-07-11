@@ -40,7 +40,7 @@ int main(void)
     }
 
     uint8_t *data = "Hello World!";
-    err = data_publish(0, data, sizeof(data), "ETHER/NORDIC/NRF9160");
+    err = data_publish(0, data, sizeof(data), MQTT_PUBLISH_TOPIC);
     if (err)
     {
         LOG_ERR("MQTT Message Send Fail: %d", err);
