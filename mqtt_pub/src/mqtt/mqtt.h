@@ -25,10 +25,10 @@
 #define CGSN_RESPONSE_LENGTH (IMEI_LEN + 6 + 1) /* Add 6 for \r\nOK\r\n and 1 for \0 */
 #define CLIENT_ID_LEN sizeof("nrf-") + IMEI_LEN
 
-#define MQTT_BROKER_HOST ""
-#define MQTT_BROKER_PORT 0
-#define MQTT_BROKER_USER ""
-#define MQTT_BROKER_PASS "!"
+#define MQTT_BROKER_HOST "test.mosquitto.org"
+#define MQTT_BROKER_PORT 1884
+#define MQTT_BROKER_USER "rw"
+#define MQTT_BROKER_PASS "readwrite"
 #define MQTT_SUBSCRIBE_TOPIC "DEV/NORDIC/NRF9160"
 
 int mqtt_init();
