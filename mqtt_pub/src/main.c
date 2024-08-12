@@ -22,12 +22,12 @@ int main(void)
         return err;
     }
 
-    err = broker_init();
-    if (err)
-    {
-        LOG_ERR("Broker Connection Fail: %d", err);
-        return err;
-    }
+    // err = mqtt_init();
+    // if (err)
+    // {
+    //     LOG_ERR("Broker Connection Fail: %d", err);
+    //     return err;
+    // }
 
     LOG_INF("Delay of 30s to make sure nrf9160 is connected to the network");
     k_msleep(30 * 1000);
@@ -39,13 +39,13 @@ int main(void)
         return err;
     }
 
-    uint8_t *data = "Hello World!";
-    err = data_publish(0, data, sizeof(data), "TEST/NORDIC/NRF9160");
-    if (err)
-    {
-        LOG_ERR("MQTT Message Send Fail: %d", err);
-        return err;
-    }
+    // uint8_t *data = "Hello World!";
+    // err = data_publish(0, data, sizeof(data), "TEST/NORDIC/NRF9160");
+    // if (err)
+    // {
+    //     LOG_ERR("MQTT Message Send Fail: %d", err);
+    //     return err;
+    // }
 
     return 0;
 }
