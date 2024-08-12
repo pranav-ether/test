@@ -9,6 +9,7 @@
  */
 
 #include "lte.h"
+#include "modem/modem_info.h"
 
 LOG_MODULE_REGISTER(LTE, LOG_LEVEL_INF);
 K_SEM_DEFINE(lte_connected, 0, 1);
@@ -76,4 +77,58 @@ int init_modem(void)
         LOG_ERR("Failed to initialize the modem library, error: %d", err);
     }
     return err;
+}
+
+int network_info_log(void)
+{
+    int err = modem_info_init();
+    if (err)
+    {
+        LOG_ERR("Failed to initialize modem info: %d", err);
+        return err;
+    }
+    LOG_INF("====== Cell Network Info ======");
+    char sbuf[128];
+    modem_info_string_get(MODEM_INFO_RSRP, sbuf, sizeof(sbuf));
+    LOG_INF("Signal strength: %s", sbuf);
+
+    modem_info_string_get(MODEM_INFO_CUR_BAND, sbuf, sizeof(sbuf));
+    LOG_INF("Current LTE band: %s", sbuf);
+
+    modem_info_string_get(MODEM_INFO_SUP_BAND, sbuf, sizeof(sbuf));
+    LOG_INF("Supported LTE bands: %s", sbuf);
+
+    modem_info_string_get(MODEM_INFO_AREA_CODE, sbuf, sizeof(sbuf));
+    LOG_INF("Tracking area code: %s", sbuf);
+
+    modem_info_string_get(MODEM_INFO_UE_MODE, sbuf, sizeof(sbuf));
+    LOG_INF("Current mode: %s", sbuf);
+
+    modem_info_string_get(MODEM_INFO_OPERATOR, sbuf, sizeof(sbuf));
+    LOG_INF("Current operator name: %s", sbuf);
+
+    modem_info_string_get(MODEM_INFO_CELLID, sbuf, sizeof(sbuf));
+    LOG_INF("Cell ID of the device: %s", sbuf);
+
+    modem_info_string_get(MODEM_INFO_IP_ADDRESS, sbuf, sizeof(sbuf));
+    LOG_INF("IP address of the device: %s", sbuf);
+
+    modem_info_string_get(MODEM_INFO_FW_VERSION, sbuf, sizeof(sbuf));
+    LOG_INF("Modem firmware version: %s", sbuf);
+
+    modem_info_string_get(MODEM_INFO_LTE_MODE, sbuf, sizeof(sbuf));
+    LOG_INF("LTE-M support mode: %s", sbuf);
+
+    modem_info_string_get(MODEM_INFO_NBIOT_MODE, sbuf, sizeof(sbuf));
+    LOG_INF("NB-IoT support mode: %s", sbuf);
+
+    modem_info_string_get(MODEM_INFO_GPS_MODE, sbuf, sizeof(sbuf));
+    LOG_INF("GPS support mode: %s", sbuf);
+
+    modem_info_string_get(MODEM_INFO_DATE_TIME, sbuf, sizeof(sbuf));
+    LOG_INF("Mobile network time and date: %s", sbuf);
+
+    LOG_INF("===============================");
+
+    return 0;
 }

@@ -14,26 +14,36 @@
 
 LOG_MODULE_REGISTER(MQTT, LOG_LEVEL_INF);
 
-#define MQTT_MESSAGE_BUFFER_SIZE 2048
+// #define MQTT_MESSAGE_BUFFER_SIZE 2048
 
 struct mqtt_client client;
 struct sockaddr_storage broker;
 
 /* Buffers for MQTT client. */
-static uint8_t rx_buffer[MQTT_MESSAGE_BUFFER_SIZE];
-static uint8_t tx_buffer[MQTT_MESSAGE_BUFFER_SIZE];
-static uint8_t payload_buf[MQTT_MESSAGE_BUFFER_SIZE];
+// static uint8_t rx_buffer[MQTT_MESSAGE_BUFFER_SIZE];
+// static uint8_t tx_buffer[MQTT_MESSAGE_BUFFER_SIZE];
+// static uint8_t payload_buf[MQTT_MESSAGE_BUFFER_SIZE];
 
 static void on_connect_cb(enum mqtt_conn_return_code return_code, bool session_present)
 {
-    LOG_INF("MQTT Return code: %d", return_code);
+    LOG_INF("MQTT Connect code: %d", return_code);
 
     int err = publish_mqtt_msg("Hello World!", "NORDIC/ETHER/TEST/CELLULAR");
 
     if (err != 0)
     {
-        LOG_ERR("MQTT Publish failed");
+        LOG_ERR("MQTT Publish failed: ");
     }
+}
+
+static void on_errors_cb(enum mqtt_helper_error error)
+{
+    LOG_INF("MQTT Error code: %d", error);
+}
+
+static void on_publish_cb(uint16_t message_id, int result)
+{
+    LOG_INF("MQTT Publish Result: %d, msg_id: %d", result, message_id);
 }
 
 int publish_mqtt_msg(const char *message, const char *pub_topic)
@@ -53,12 +63,13 @@ int publish_mqtt_msg(const char *message, const char *pub_topic)
     if (err)
     {
         LOG_WRN("Failed to send payload, err: %d", err);
-        return -1;
+        return err;
     }
     LOG_INF("Published message: \"%.*s\" on topic: \"%.*s\"", param.message.payload.len,
             param.message.payload.data,
             param.message.topic.topic.size,
             param.message.topic.topic.utf8);
+    return err;
 }
 
 int mqtt_init()
@@ -77,7 +88,12 @@ int mqtt_init()
     };
 
     struct mqtt_helper_cfg broker_cb_cfg = {
-        .cb.on_connack = on_connect_cb,
+        .cb = {
+            .on_connack = on_connect_cb,
+            .on_error = on_errors_cb,
+            .on_puback = on_publish_cb,
+            .on_all_events = mqtt_evt_handler,
+        },
     };
 
     int err = mqtt_helper_init(&broker_cb_cfg);
@@ -86,202 +102,82 @@ int mqtt_init()
         LOG_ERR("Failed to initialize MQTT client: %d", err);
         return 0;
     }
-    LOG_INF("Connection to broker using mqtt_connect");
+    LOG_INF("Connection to broker using mqtt_init");
     err = mqtt_helper_connect(&broker_conn_params);
     while (err != 0)
     {
-        LOG_ERR("Error in mqtt_connect: %d", err);
+        LOG_ERR("Error in mqtt_init: %d", err);
         k_sleep(K_SECONDS(2));
     }
     return err;
 }
 
-// int client_init(/* struct mqtt_client *client */)
-// {
-//     int err;
-//     /* Initializes the client instance. */
-//     mqtt_client_init(&client);
+bool mqtt_evt_handler(struct mqtt_client *const client, const struct mqtt_evt *const event)
+{
+    switch (event->type)
+    {
+    case MQTT_EVT_CONNACK:
+        if (event->result != 0)
+        {
+            LOG_ERR("MQTT connect failed: %d", event->result);
+            break;
+        }
 
-//     /* Resolves the configured hostname and initializes the MQTT broker structure */
-//     err = broker_init();
-//     if (err)
-//     {
-//         LOG_ERR("Failed to initialize broker connection");
-//         return err;
-//     }
+        LOG_INF("MQTT client connected");
+        break;
 
-//     /* MQTT client configuration */
-//     client.broker = &broker;
-//     client.evt_cb = mqtt_evt_handler;
-//     client.client_id.utf8 = client_id_get();
-//     client.client_id.size = strlen(client.client_id.utf8);
-//     client.user_name->utf8 = (uint8_t *)MQTT_BROKER_USER;
-//     client.user_name->size = sizeof(MQTT_BROKER_USER);
-//     client.password->utf8 = (uint8_t *)MQTT_BROKER_PASS;
-//     client.password->size = sizeof(MQTT_BROKER_PASS);
-//     client.protocol_version = MQTT_VERSION_3_1_1;
+    case MQTT_EVT_DISCONNECT:
+        LOG_INF("MQTT client disconnected: %d", event->result);
+        break;
 
-//     client.rx_buf = rx_buffer;
-//     client.rx_buf_size = sizeof(rx_buffer);
-//     client.tx_buf = tx_buffer;
-//     client.tx_buf_size = sizeof(tx_buffer);
+    case MQTT_EVT_PUBLISH:
+        /* Listen to published messages received from the broker and extract the message */
+        {
+            const struct mqtt_publish_param *p = &event->param.publish;
+            LOG_INF("MQTT PUBLISH result=%d len=%d",
+                    event->result, p->message.payload.len);
 
-//     /* We are not using TLS in Exercise 1 */
-//     client.transport.type = MQTT_TRANSPORT_NON_SECURE;
+            if (p->message.topic.qos == MQTT_QOS_1_AT_LEAST_ONCE)
+            {
+                const struct mqtt_puback_param ack = {
+                    .message_id = p->message_id};
+                mqtt_publish_qos1_ack(client, &ack);
+            }
+        }
+        break;
 
-//     return err;
-// }
+    case MQTT_EVT_PUBACK:
+        if (event->result != 0)
+        {
+            LOG_ERR("MQTT PUBACK error: %d", event->result);
+            break;
+        }
 
-// void mqtt_evt_handler(struct mqtt_client *const c,
-//                       const struct mqtt_evt *evt)
-// {
-//     int err;
+        LOG_INF("PUBACK packet id: %u", event->param.puback.message_id);
+        break;
 
-//     switch (evt->type)
-//     {
-//     case MQTT_EVT_CONNACK:
-//         if (evt->result != 0)
-//         {
-//             LOG_ERR("MQTT connect failed: %d", evt->result);
-//             break;
-//         }
+    case MQTT_EVT_SUBACK:
+        if (event->result != 0)
+        {
+            LOG_ERR("MQTT SUBACK error: %d", event->result);
+            break;
+        }
 
-//         LOG_INF("MQTT client connected");
-//         subscribe(c, MQTT_SUBSCRIBE_TOPIC);
-//         break;
+        LOG_INF("SUBACK packet id: %u", event->param.suback.message_id);
+        break;
 
-//     case MQTT_EVT_DISCONNECT:
-//         LOG_INF("MQTT client disconnected: %d", evt->result);
-//         break;
+    case MQTT_EVT_PINGRESP:
+        if (event->result != 0)
+        {
+            LOG_ERR("MQTT PINGRESP error: %d", event->result);
+        }
+        break;
 
-//     case MQTT_EVT_PUBLISH:
-//         /* Listen to published messages received from the broker and extract the message */
-//         {
-//             const struct mqtt_publish_param *p = &evt->param.publish;
-//             LOG_INF("MQTT PUBLISH result=%d len=%d",
-//                     evt->result, p->message.payload.len);
-
-//             err = get_received_payload(c, p->message.payload.len);
-
-//             if (p->message.topic.qos == MQTT_QOS_1_AT_LEAST_ONCE)
-//             {
-//                 const struct mqtt_puback_param ack = {
-//                     .message_id = p->message_id};
-//                 mqtt_publish_qos1_ack(c, &ack);
-//             }
-
-//             if (err >= 0)
-//             {
-//                 data_print("Received: ", payload_buf, p->message.payload.len);
-//             }
-//             else if (err == -EMSGSIZE)
-//             {
-//                 LOG_ERR("Received payload (%d bytes) is larger than the payload buffer size (%d bytes).",
-//                         p->message.payload.len, sizeof(payload_buf));
-//             }
-//             else
-//             {
-//                 LOG_ERR("get_received_payload failed: %d", err);
-//                 LOG_INF("Disconnecting MQTT client...");
-
-//                 err = mqtt_disconnect(c);
-//                 if (err)
-//                 {
-//                     LOG_ERR("Could not disconnect: %d", err);
-//                 }
-//             }
-//         }
-//         break;
-
-//     case MQTT_EVT_PUBACK:
-//         if (evt->result != 0)
-//         {
-//             LOG_ERR("MQTT PUBACK error: %d", evt->result);
-//             break;
-//         }
-
-//         LOG_INF("PUBACK packet id: %u", evt->param.puback.message_id);
-//         break;
-
-//     case MQTT_EVT_SUBACK:
-//         if (evt->result != 0)
-//         {
-//             LOG_ERR("MQTT SUBACK error: %d", evt->result);
-//             break;
-//         }
-
-//         LOG_INF("SUBACK packet id: %u", evt->param.suback.message_id);
-//         break;
-
-//     case MQTT_EVT_PINGRESP:
-//         if (evt->result != 0)
-//         {
-//             LOG_ERR("MQTT PINGRESP error: %d", evt->result);
-//         }
-//         break;
-
-//     default:
-//         LOG_INF("Unhandled MQTT event type: %d", evt->type);
-//         break;
-//     }
-// }
-
-// int broker_init(void)
-// {
-//     int err;
-//     struct addrinfo *result;
-//     struct addrinfo *addr;
-//     struct addrinfo hints = {
-//         .ai_family = AF_INET,
-//         .ai_socktype = SOCK_STREAM};
-
-//     err = getaddrinfo(MQTT_BROKER_HOST, NULL, &hints, &result);
-//     if (err)
-//     {
-//         LOG_ERR("getaddrinfo failed: %d", err);
-//         return -ECHILD;
-//     }
-
-//     addr = result;
-
-//     /* Look for address of the broker. */
-//     while (addr != NULL)
-//     {
-//         /* IPv4 Address. */
-//         if (addr->ai_addrlen == sizeof(struct sockaddr_in))
-//         {
-//             struct sockaddr_in *broker4 =
-//                 ((struct sockaddr_in *)&broker);
-//             char ipv4_addr[NET_IPV4_ADDR_LEN];
-
-//             broker4->sin_addr.s_addr =
-//                 ((struct sockaddr_in *)addr->ai_addr)
-//                     ->sin_addr.s_addr;
-//             broker4->sin_family = AF_INET;
-//             broker4->sin_port = htons(MQTT_BROKER_PORT);
-
-//             inet_ntop(AF_INET, &broker4->sin_addr.s_addr,
-//                       ipv4_addr, sizeof(ipv4_addr));
-//             LOG_INF("IPv4 Address found %s", (char *)(ipv4_addr));
-
-//             break;
-//         }
-//         else
-//         {
-//             LOG_ERR("ai_addrlen = %u should be %u or %u",
-//                     (unsigned int)addr->ai_addrlen,
-//                     (unsigned int)sizeof(struct sockaddr_in),
-//                     (unsigned int)sizeof(struct sockaddr_in6));
-//         }
-
-//         addr = addr->ai_next;
-//     }
-
-//     /* Free the address. */
-//     freeaddrinfo(result);
-
-//     return err;
-// }
+    default:
+        LOG_INF("Unhandled MQTT event type: %d", event->type);
+        break;
+    }
+}
 
 const uint8_t *client_id_get(void)
 {
@@ -306,90 +202,3 @@ exit:
 
     return client_id;
 }
-
-// int get_received_payload(struct mqtt_client *c, size_t length)
-// {
-//     int ret;
-//     int err = 0;
-
-//     /* Return an error if the payload is larger than the payload buffer.
-//      * Note: To allow new messages, we have to read the payload before returning.
-//      */
-//     if (length > sizeof(payload_buf))
-//     {
-//         err = -EMSGSIZE;
-//     }
-
-//     /* Truncate payload until it fits in the payload buffer. */
-//     while (length > sizeof(payload_buf))
-//     {
-//         ret = mqtt_read_publish_payload_blocking(
-//             c, payload_buf, (length - sizeof(payload_buf)));
-//         if (ret == 0)
-//         {
-//             return -EIO;
-//         }
-//         else if (ret < 0)
-//         {
-//             return ret;
-//         }
-
-//         length -= ret;
-//     }
-
-//     ret = mqtt_readall_publish_payload(c, payload_buf, length);
-//     if (ret)
-//     {
-//         return ret;
-//     }
-
-//     return err;
-// }
-
-// int data_publish(/* struct mqtt_client *c,  */ enum mqtt_qos qos,
-//                  uint8_t *data, size_t len, const char *topic)
-// {
-//     struct mqtt_publish_param param;
-
-//     param.message.topic.qos = qos;
-//     param.message.topic.topic.utf8 = topic;
-//     param.message.topic.topic.size = strlen(topic);
-//     param.message.payload.data = data;
-//     param.message.payload.len = len;
-//     param.message_id = sys_rand32_get();
-//     param.dup_flag = 0;
-//     param.retain_flag = 0;
-
-//     data_print("Publishing: ", data, len);
-//     LOG_INF("to topic: %s len: %u", topic, (unsigned int)strlen(topic));
-
-//     return mqtt_publish(&client, &param);
-// }
-
-// int subscribe(struct mqtt_client *const c, const char *topic)
-// {
-//     struct mqtt_topic subscribe_topic = {
-//         .topic = {
-//             .utf8 = topic,
-//             .size = strlen(topic)},
-//         .qos = MQTT_QOS_1_AT_LEAST_ONCE};
-
-//     const struct mqtt_subscription_list subscription_list = {
-//         .list = &subscribe_topic,
-//         .list_count = 1,
-//         .message_id = 1234};
-
-//     LOG_INF("Subscribing to: %s len %u", topic,
-//             (unsigned int)strlen(topic));
-
-//     return mqtt_subscribe(c, &subscription_list);
-// }
-
-// void data_print(uint8_t *prefix, uint8_t *data, size_t len)
-// {
-//     char buf[len + 1];
-
-//     memcpy(buf, data, len);
-//     buf[len] = 0;
-//     LOG_INF("%s%s", (char *)prefix, (char *)buf);
-// }

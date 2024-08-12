@@ -19,5 +19,6 @@
 int modem_configure(void);
 void lte_handler(const struct lte_lc_evt *const evt);
 int init_modem(void);
+int network_info_log(void);
 
 #endif
